@@ -148,7 +148,6 @@ def submit():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with db_conn() as conn:
         # Use ? placeholders for sqlite, %s for postgres
-        # We'll detect by trying sqlite-style first, then fallback.
         sql_sqlite = (
             """
             INSERT INTO messages (category, content, image, time, service_attitude, food_quality, overall_rating)
@@ -161,10 +160,10 @@ def submit():
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
         )
-        try:
-            exec_sql(conn, sql_sqlite, (category, content, image_rel, now, service_attitude, food_quality, overall_rating))
-        except Exception:
+        if using_postgres():
             exec_sql(conn, sql_pg, (category, content, image_rel, now, service_attitude, food_quality, overall_rating))
+        else:
+            exec_sql(conn, sql_sqlite, (category, content, image_rel, now, service_attitude, food_quality, overall_rating))
 
     flash("提交成功，谢谢你的留言！")
     return redirect(url_for("index"))
