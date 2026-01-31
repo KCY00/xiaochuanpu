@@ -22,14 +22,21 @@ app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8MB
 def init_db():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    with db_conn() as conn:
-        # If DATABASE_URL is set but Postgres is unreachable, db_conn() may fall back to SQLite.
-        # In that case, don't create a SQLite schema by accident; we'll retry later.
-        if using_postgres() and conn.__class__.__module__.startswith("sqlite3"):
+    if using_postgres():
+        # Ensure Postgres schema exists (do not fall back to SQLite here).
+        import psycopg2
+        import psycopg2.extras
+
+        try:
+            conn = psycopg2.connect(
+                os.environ["DATABASE_URL"],
+                cursor_factory=psycopg2.extras.RealDictCursor,
+                connect_timeout=5,
+            )
+        except Exception:
             return
 
-        # Create schema (SQLite vs Postgres)
-        if using_postgres():
+        try:
             exec_sql(
                 conn,
                 """
@@ -45,22 +52,27 @@ def init_db():
                 )
                 """,
             )
-        else:
-            exec_sql(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    category TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    image TEXT,
-                    time TEXT NOT NULL,
-                    service_attitude INTEGER,
-                    food_quality TEXT,
-                    overall_rating TEXT
-                )
-                """,
+        finally:
+            conn.close()
+        return
+
+    # SQLite schema
+    with db_conn() as conn:
+        exec_sql(
+            conn,
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                content TEXT NOT NULL,
+                image TEXT,
+                time TEXT NOT NULL,
+                service_attitude INTEGER,
+                food_quality TEXT,
+                overall_rating TEXT
             )
+            """,
+        )
 
         # SQLite migration (Postgres doesn't support PRAGMA)
         try:
