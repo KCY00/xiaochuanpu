@@ -5,7 +5,7 @@ from pathlib import Path
 from flask import Flask, flash, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
-from db import db_conn, exec_sql
+from db import db_conn, exec_sql, using_postgres
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
@@ -23,22 +23,39 @@ def init_db():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     with db_conn() as conn:
-        # SQLite + Postgres compatible-ish schema (store time as TEXT for simplicity)
-        exec_sql(
-            conn,
-            """
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY,
-                category TEXT NOT NULL,
-                content TEXT NOT NULL,
-                image TEXT,
-                time TEXT NOT NULL,
-                service_attitude INTEGER,
-                food_quality TEXT,
-                overall_rating TEXT
+        # Create schema (SQLite vs Postgres)
+        if using_postgres():
+            exec_sql(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS messages (
+                    id BIGSERIAL PRIMARY KEY,
+                    category TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    image TEXT,
+                    time TEXT NOT NULL,
+                    service_attitude INTEGER,
+                    food_quality TEXT,
+                    overall_rating TEXT
+                )
+                """,
             )
-            """,
-        )
+        else:
+            exec_sql(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    image TEXT,
+                    time TEXT NOT NULL,
+                    service_attitude INTEGER,
+                    food_quality TEXT,
+                    overall_rating TEXT
+                )
+                """,
+            )
 
         # SQLite migration (Postgres doesn't support PRAGMA)
         try:
