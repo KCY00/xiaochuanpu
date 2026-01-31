@@ -1,13 +1,13 @@
 import os
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, flash, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
+from db import db_conn, exec_sql
+
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "database.db"
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
 
 ADMIN_PATH = "/admin226"  # per spec
@@ -19,19 +19,16 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8MB
 
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def init_db():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    with get_db() as conn:
-        conn.execute(
+
+    with db_conn() as conn:
+        # SQLite + Postgres compatible-ish schema (store time as TEXT for simplicity)
+        exec_sql(
+            conn,
             """
             CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY,
                 category TEXT NOT NULL,
                 content TEXT NOT NULL,
                 image TEXT,
@@ -40,19 +37,22 @@ def init_db():
                 food_quality TEXT,
                 overall_rating TEXT
             )
-            """
+            """,
         )
 
-        # Lightweight schema migration for existing DBs
-        cols = {
-            r[1] for r in conn.execute("PRAGMA table_info(messages)").fetchall()
-        }
-        if "service_attitude" not in cols:
-            conn.execute("ALTER TABLE messages ADD COLUMN service_attitude INTEGER")
-        if "food_quality" not in cols:
-            conn.execute("ALTER TABLE messages ADD COLUMN food_quality TEXT")
-        if "overall_rating" not in cols:
-            conn.execute("ALTER TABLE messages ADD COLUMN overall_rating TEXT")
+        # SQLite migration (Postgres doesn't support PRAGMA)
+        try:
+            cur = exec_sql(conn, "PRAGMA table_info(messages)")
+            cols = {row[1] for row in cur.fetchall()}
+            if "service_attitude" not in cols:
+                exec_sql(conn, "ALTER TABLE messages ADD COLUMN service_attitude INTEGER")
+            if "food_quality" not in cols:
+                exec_sql(conn, "ALTER TABLE messages ADD COLUMN food_quality TEXT")
+            if "overall_rating" not in cols:
+                exec_sql(conn, "ALTER TABLE messages ADD COLUMN overall_rating TEXT")
+        except Exception:
+            # Likely Postgres; ignore
+            pass
 
 
 def allowed_file(filename: str) -> bool:
@@ -124,14 +124,25 @@ def submit():
         image_rel = f"uploads/{safe_name}"  # stored relative to /static
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with get_db() as conn:
-        conn.execute(
+    with db_conn() as conn:
+        # Use ? placeholders for sqlite, %s for postgres
+        # We'll detect by trying sqlite-style first, then fallback.
+        sql_sqlite = (
             """
             INSERT INTO messages (category, content, image, time, service_attitude, food_quality, overall_rating)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (category, content, image_rel, now, service_attitude, food_quality, overall_rating),
+            """
         )
+        sql_pg = (
+            """
+            INSERT INTO messages (category, content, image, time, service_attitude, food_quality, overall_rating)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+        )
+        try:
+            exec_sql(conn, sql_sqlite, (category, content, image_rel, now, service_attitude, food_quality, overall_rating))
+        except Exception:
+            exec_sql(conn, sql_pg, (category, content, image_rel, now, service_attitude, food_quality, overall_rating))
 
     flash("提交成功，谢谢你的留言！")
     return redirect(url_for("index"))
@@ -139,14 +150,18 @@ def submit():
 
 @app.get(ADMIN_PATH)
 def admin():
-    with get_db() as conn:
-        rows = conn.execute(
+    with db_conn() as conn:
+        sql = (
             """
             SELECT id, category, content, image, time, service_attitude, food_quality, overall_rating
             FROM messages
             ORDER BY id DESC
             """
-        ).fetchall()
+        )
+        try:
+            rows = exec_sql(conn, sql).fetchall()
+        except Exception:
+            rows = []
     return render_template("admin.html", rows=rows, admin_path=ADMIN_PATH)
 
 
