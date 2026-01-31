@@ -23,6 +23,11 @@ def init_db():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     with db_conn() as conn:
+        # If DATABASE_URL is set but Postgres is unreachable, db_conn() may fall back to SQLite.
+        # In that case, don't create a SQLite schema by accident; we'll retry later.
+        if using_postgres() and conn.__class__.__module__.startswith("sqlite3"):
+            return
+
         # Create schema (SQLite vs Postgres)
         if using_postgres():
             exec_sql(
@@ -95,6 +100,11 @@ def index():
 
 @app.post("/submit")
 def submit():
+    # Ensure schema exists (in case the app started while DB was unreachable)
+    try:
+        init_db()
+    except Exception as e:
+        print(f"[WARN] init_db in submit failed: {e}")
     category = (request.form.get("category") or "").strip()
     content = (request.form.get("content") or "").strip()
 
@@ -171,6 +181,11 @@ def submit():
 
 @app.get(ADMIN_PATH)
 def admin():
+    # Ensure schema exists (in case the app started while DB was unreachable)
+    try:
+        init_db()
+    except Exception as e:
+        print(f"[WARN] init_db in admin failed: {e}")
     with db_conn() as conn:
         sql = (
             """
