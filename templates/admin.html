@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>管理后台</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 0; background:#0b1220; color:#e5e7eb; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 20px; }
+    .card { background:#111827; border-radius: 14px; padding: 18px; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
+    h1 { margin: 0 0 12px; font-size: 20px; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: top; }
+    th { text-align:left; color:#cbd5e1; font-weight:700; }
+    .muted { color:#94a3b8; font-size: 12px; }
+    img { max-width: 220px; border-radius: 10px; display:block; }
+    a { color:#60a5fa; }
+    code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>管理后台</h1>
+      <div class="muted">路径：<code>{{ admin_path }}</code> · 默认按时间/ID 倒序</div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>内容</th>
+            <th>问卷</th>
+            <th>时间线（年/月/日/时间）</th>
+            <th>图片</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(last_date='') %}
+          {% for r in rows %}
+            {% set date_part = (r.time or '')[:10] %}
+            {% if date_part and date_part != ns.last_date %}
+              <tr>
+                <td colspan="5" class="muted" style="padding-top:16px; font-weight:700;">
+                  📅 {{ date_part.replace('-', '/') }}
+                </td>
+              </tr>
+              {% set ns.last_date = date_part %}
+            {% endif %}
+            <tr>
+              <td>{{ r.id }}</td>
+              <td style="white-space: pre-wrap">{{ r.content }}</td>
+              <td>
+                <div class="muted">服务态度：<b style="color:#e5e7eb">{{ r.service_attitude if r.service_attitude is not none else '-' }}</b></div>
+                <div class="muted">食物品质：<b style="color:#e5e7eb">{% if r.food_quality=='难吞' %}难吞🤮{% elif r.food_quality=='还行' %}还行😐{% elif r.food_quality=='好吃' %}好吃😋{% elif r.food_quality=='超级好吃' %}超级好吃🤤{% else %}{{ r.food_quality or '-' }}{% endif %}</b></div>
+                <div class="muted">综合评分：<b style="color:#e5e7eb">{% if r.overall_rating=='饿死都不来' %}饿死都不来🤡{% elif r.overall_rating=='偶尔会来' %}偶尔会来🫡{% elif r.overall_rating=='天天都来' %}天天都来🤩{% else %}{{ r.overall_rating or '-' }}{% endif %}</b></div>
+              </td>
+              <td>
+                {% if r.time %}
+                  {{ r.time.replace('-', '/') }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.image %}
+                  <a href="{{ url_for('static', filename=r.image) }}" target="_blank">打开原图</a>
+                  <div style="height:8px"></div>
+                  <img src="{{ url_for('static', filename=r.image) }}" alt="image" />
+                {% else %}
+                  <span class="muted">无</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="muted">暂无留言</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>
