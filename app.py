@@ -80,7 +80,12 @@ def allowed_file(filename: str) -> bool:
 
 
 # Ensure DB + schema exist even when running under WSGI servers (gunicorn)
-init_db()
+# Do not crash the whole app if the external DB is temporarily unreachable.
+try:
+    init_db()
+except Exception as e:
+    # Keep app running; admin page will show empty until DB is reachable.
+    print(f"[WARN] init_db failed: {e}")
 
 
 @app.get("/")

@@ -22,20 +22,32 @@ def db_conn():
         import psycopg2
         import psycopg2.extras
 
-        conn = psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
-    else:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
+            conn = psycopg2.connect(
+                os.environ["DATABASE_URL"],
+                cursor_factory=psycopg2.extras.RealDictCursor,
+                connect_timeout=5,
+            )
+        except psycopg2.OperationalError:
+            # Fallback to SQLite if Postgres is unreachable (e.g., IPv6-only network).
+            conn = None
+
+        if conn is not None:
+            try:
+                yield conn
+                conn.commit()
+            finally:
+                conn.close()
+            return
+
+    # SQLite fallback
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def exec_sql(conn, sql: str, params=None):
