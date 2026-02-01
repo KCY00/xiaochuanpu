@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, flash, redirect, render_template, request, url_for, jsonify
 from werkzeug.utils import secure_filename
 
 from db import db_conn, exec_sql, using_postgres
@@ -109,6 +109,28 @@ except Exception as e:
 @app.get("/")
 def index():
     return render_template("index.html")
+
+
+@app.get("/healthz")
+def healthz():
+    """Lightweight health check.
+
+    - Returns 200 when the web process is up AND DB is reachable.
+    - Returns 500 when DB is unreachable.
+
+    This endpoint is suitable for uptime monitors / periodic pings.
+    """
+    db_type = "postgres" if using_postgres() else "sqlite"
+    try:
+        with db_conn() as conn:
+            # Smallest possible query.
+            if using_postgres():
+                exec_sql(conn, "SELECT 1")
+            else:
+                exec_sql(conn, "SELECT 1")
+        return jsonify(ok=True, db=db_type, time=datetime.now().isoformat()), 200
+    except Exception as e:
+        return jsonify(ok=False, db=db_type, error=str(e)), 500
 
 
 @app.post("/submit")
