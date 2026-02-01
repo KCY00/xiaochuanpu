@@ -61,12 +61,11 @@ def db_conn():
 
 
 def exec_sql(conn, sql: str, params=None):
+    """Execute SQL and return a cursor.
+
+    NOTE: Do not close the cursor here. Callers may need to fetch results.
+    The connection context manager will close the connection, which closes cursors.
+    """
     cur = conn.cursor()
-    try:
-        cur.execute(sql, params or ())
-        return cur
-    finally:
-        try:
-            cur.close()
-        except Exception:
-            pass
+    cur.execute(sql, params or ())
+    return cur
