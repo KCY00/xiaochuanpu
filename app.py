@@ -209,8 +209,10 @@ def admin():
         )
         try:
             rows = exec_sql(conn, sql).fetchall()
-        except Exception:
-            rows = []
+        except Exception as e:
+            # Don't silently hide DB issues; log them so we can diagnose.
+            print(f"[ERROR] admin query failed: {e}")
+            raise
     return render_template("admin.html", rows=rows, admin_path=ADMIN_PATH)
 
 

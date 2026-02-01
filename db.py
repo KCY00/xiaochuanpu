@@ -17,30 +17,40 @@ def db_conn():
 
     - If DATABASE_URL is set (non-sqlite), connect to Postgres.
     - Else use local SQLite database.db.
+
+    Important: when DATABASE_URL is set, do NOT silently fall back to SQLite.
+    That creates a split-brain where /submit writes to Postgres but /admin reads from SQLite.
     """
     if using_postgres():
+        import time
         import psycopg2
         import psycopg2.extras
 
-        try:
-            conn = psycopg2.connect(
-                os.environ["DATABASE_URL"],
-                cursor_factory=psycopg2.extras.RealDictCursor,
-                connect_timeout=5,
-            )
-        except psycopg2.OperationalError:
-            # Fallback to SQLite if Postgres is unreachable (e.g., IPv6-only network).
-            conn = None
-
-        if conn is not None:
+        last_exc = None
+        for _ in range(3):
             try:
-                yield conn
-                conn.commit()
-            finally:
-                conn.close()
-            return
+                conn = psycopg2.connect(
+                    os.environ["DATABASE_URL"],
+                    cursor_factory=psycopg2.extras.RealDictCursor,
+                    connect_timeout=5,
+                )
+                last_exc = None
+                break
+            except psycopg2.OperationalError as e:
+                last_exc = e
+                time.sleep(0.5)
 
-    # SQLite fallback
+        if last_exc is not None:
+            raise last_exc
+
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+        return
+
+    # SQLite (only when Postgres is not configured)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
